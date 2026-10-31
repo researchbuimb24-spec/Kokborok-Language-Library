@@ -30,6 +30,7 @@ from tripura_translate.exceptions import (
 from tripura_translate.text_processing import clean_text, validate_text
 
 _DEFAULT_DATA_DIR = Path(__file__).parent / "data" / "language_basics"
+_DEFAULT_BASICS_CACHE: Optional[Dict[str, Any]] = None
 
 
 class KokborokLanguageBasics:
@@ -100,10 +101,22 @@ class KokborokLanguageBasics:
 
     def _load_datasets(self) -> None:
         """Load and validate all JSON datasets from the data directory."""
+        global _DEFAULT_BASICS_CACHE
+
         if not self._data_dir.exists():
             raise FileNotFoundError(
                 f"Kokborok language basics data directory not found at: {self._data_dir}"
             )
+
+        # Fast path: use cached datasets when loading from the default data directory
+        if self._data_dir == _DEFAULT_DATA_DIR and _DEFAULT_BASICS_CACHE is not None:
+            self._alphabet = _DEFAULT_BASICS_CACHE["alphabet"]
+            self._vocabulary = _DEFAULT_BASICS_CACHE["vocabulary"]
+            self._grammar_topics = _DEFAULT_BASICS_CACHE["grammar_topics"]
+            self._phrases = _DEFAULT_BASICS_CACHE["phrases"]
+            self._sources = _DEFAULT_BASICS_CACHE["sources"]
+            self._categories = _DEFAULT_BASICS_CACHE["categories"]
+            return
 
         # 1. Alphabet dataset
         alphabet_file = self._data_dir / "alphabet.json"
@@ -169,6 +182,16 @@ class KokborokLanguageBasics:
         if not isinstance(raw_sources, list):
             raise ValueError(f"Invalid format in {sources_file}: expected JSON list.")
         self._sources = raw_sources
+
+        if self._data_dir == _DEFAULT_DATA_DIR:
+            _DEFAULT_BASICS_CACHE = {
+                "alphabet": self._alphabet,
+                "vocabulary": self._vocabulary,
+                "grammar_topics": self._grammar_topics,
+                "phrases": self._phrases,
+                "sources": self._sources,
+                "categories": self._categories,
+            }
 
     @property
     def total_vocabulary(self) -> int:
@@ -239,14 +262,14 @@ class KokborokLanguageBasics:
 
             # Exact match
             if valid_query in (kb_latin, kb_bengali, eng):
-                exact_matches.append(deepcopy(entry))
+                exact_matches.append(dict(entry))
             # Substring match
             elif (
                 valid_query in kb_latin
                 or valid_query in kb_bengali
                 or valid_query in eng
             ):
-                substring_matches.append(deepcopy(entry))
+                substring_matches.append(dict(entry))
 
         return exact_matches + substring_matches
 

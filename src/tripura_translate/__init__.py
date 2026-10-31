@@ -40,6 +40,11 @@ from tripura_translate.literature import (
     list_literature,
     search_literature,
 )
+from tripura_translate.morphological_generator import (
+    KokborokMorphologicalGenerator,
+    generate_kokborok_vocabulary,
+    transliterate_to_bengali,
+)
 from tripura_translate.text_processing import (
     analyze_word_structure,
     clean_text,
@@ -93,11 +98,14 @@ __all__ = [
     "KokborokLiterature",
     "LiteratureItem",
     "KokborokLanguageBasics",
+    "KokborokMorphologicalGenerator",
     "Translator",
     "VerifiedPhraseTranslator",
     "HuggingFaceTranslator",
     "BaseTranslator",
     "TranslationResult",
+    "generate_kokborok_vocabulary",
+    "transliterate_to_bengali",
     "get_default_dictionary",
     "get_default_literature",
     "get_default_language_basics",

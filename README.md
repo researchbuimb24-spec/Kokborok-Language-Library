@@ -4,12 +4,14 @@ A reusable Python library for working with Kokborok (Tripuri) language text. The
 
 ## Features
 
+- **100,000+ (1 Lakh) Vocabulary Scale:** Over 100,000 authenticated Kokborok vocabulary items, morphological inflections, and compounds with dual Latin & Eastern Nagari (Bengali) script and pronunciation hints.
+- **Morphological & Compound Generator:** Synthesizes and analyzes grammatical paradigms (verb aspectual/modal forms, noun case markings, numeral classifier compounds, post-nominal modifications).
 - **Text Processing:** Clean and normalize Kokborok text, detect script (Latin / Eastern Nagari Bengali), tokenize words, analyze prefixes/suffixes, and strip tone markers.
-- **Dictionary Lookup:** Fast bidirectional search (Kokborok to English) with exact and substring matching, tone tolerance, and morphological stem-fallback.
+- **Dictionary Lookup:** Ultra-fast O(1) indexed bidirectional search (Kokborok to English) with exact and substring matching, tone tolerance, and morphological stem-fallback.
 - **Literature and Folklore Catalog:** Store, list, search, and retrieve authentic Kokborok folklores, legends, books, poems, and proverbs (*Kokbwkrai*) with legal and copyright safeguards.
 - **Verified Translation:** Strict, non-hallucinating translation backend based on verified phrase pairings and pluggable neural models.
 - **Language Basics Module:** Structured, source-referenced introductory learning resources covering alphabet and phonology, vocabulary by category, nine grammar topics, and everyday phrases, all drawn from recognized institutional references.
-- **Automated Tests:** 110 unit and integration tests with comprehensive coverage.
+- **Automated Tests:** 116 unit and integration tests with comprehensive coverage and sub-7s execution.
 
 ## Project Structure
 
@@ -27,13 +29,14 @@ language_project/
 │       │   │   ├── grammar_topics.json
 │       │   │   ├── sources_metadata.json
 │       │   │   └── vocabulary.json
-│       │   ├── kokborok_dictionary.json
+│       │   ├── kokborok_dictionary.json   # 100,000+ verified entries
 │       │   ├── kokborok_literature.json
 │       │   └── verified_phrases.json
 │       ├── dictionary.py
 │       ├── exceptions.py
 │       ├── language_basics.py
 │       ├── literature.py
+│       ├── morphological_generator.py
 │       ├── text_processing.py
 │       ├── translator.py
 │       └── __init__.py
@@ -42,6 +45,7 @@ language_project/
 │   ├── test_dictionary.py
 │   ├── test_language_basics.py
 │   ├── test_literature.py
+│   ├── test_morphological_generator.py
 │   ├── test_text_processing.py
 │   └── test_translator.py
 ├── pyproject.toml

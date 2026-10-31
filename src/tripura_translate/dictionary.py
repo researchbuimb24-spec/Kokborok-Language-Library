@@ -24,6 +24,7 @@ from tripura_translate.text_processing import (
 
 
 _DEFAULT_DATA_PATH = Path(__file__).parent / "data" / "kokborok_dictionary.json"
+_DEFAULT_DATA_CACHE: Optional[Dict[str, Any]] = None
 
 
 class KokborokDictionary:
@@ -48,14 +49,62 @@ class KokborokDictionary:
         self._entries: List[Dict[str, Any]] = []
         self._loaded: bool = False
         self._categories: Set[str] = set()
+        self._latin_index: Dict[str, List[Dict[str, Any]]] = {}
+        self._bengali_index: Dict[str, List[Dict[str, Any]]] = {}
+        self._english_index: Dict[str, List[Dict[str, Any]]] = {}
+        self._category_index: Dict[str, List[Dict[str, Any]]] = {}
         self._load_data()
+
+    def _index_entry(self, entry: Dict[str, Any]) -> None:
+        """Add an entry into internal hash indices for fast O(1) exact lookups."""
+        cat = entry.get("category")
+        if cat:
+            cat_l = cat.strip().lower()
+            self._categories.add(cat_l)
+            self._category_index[cat_l] = self._category_index.get(cat_l, []) + [entry]
+
+        latin = entry.get("kokborok_latin")
+        if latin:
+            l_low = latin.strip().lower()
+            self._latin_index[l_low] = self._latin_index.get(l_low, []) + [entry]
+            l_tone = remove_tone_markers(l_low)
+            if l_tone != l_low:
+                self._latin_index[l_tone] = self._latin_index.get(l_tone, []) + [entry]
+
+        bengali = entry.get("kokborok_bengali")
+        if bengali:
+            b_clean = bengali.strip()
+            self._bengali_index[b_clean] = self._bengali_index.get(b_clean, []) + [entry]
+
+        eng = entry.get("english")
+        if eng:
+            e_low = eng.strip().lower()
+            self._english_index[e_low] = self._english_index.get(e_low, []) + [entry]
+
+        for syn in entry.get("english_synonyms", []):
+            if syn:
+                s_low = syn.strip().lower()
+                self._english_index[s_low] = self._english_index.get(s_low, []) + [entry]
 
     def _load_data(self) -> None:
         """Load dictionary entries from the JSON dataset."""
+        global _DEFAULT_DATA_CACHE
+
         if not self._data_path.exists():
             raise FileNotFoundError(
                 f"Dictionary data file not found at: {self._data_path}"
             )
+
+        # Fast path: use cached parsed dataset when loading from default path
+        if self._data_path == _DEFAULT_DATA_PATH and _DEFAULT_DATA_CACHE is not None:
+            self._entries = list(_DEFAULT_DATA_CACHE["entries"])
+            self._categories = set(_DEFAULT_DATA_CACHE["categories"])
+            self._latin_index = dict(_DEFAULT_DATA_CACHE["latin_index"])
+            self._bengali_index = dict(_DEFAULT_DATA_CACHE["bengali_index"])
+            self._english_index = dict(_DEFAULT_DATA_CACHE["english_index"])
+            self._category_index = dict(_DEFAULT_DATA_CACHE["category_index"])
+            self._loaded = True
+            return
 
         with open(self._data_path, "r", encoding="utf-8") as file:
             data = json.load(file)
@@ -66,11 +115,48 @@ class KokborokDictionary:
             )
 
         self._entries = data
-        self._categories = {
-            entry.get("category", "general")
-            for entry in self._entries
-            if "category" in entry
-        }
+        self._categories = set()
+        self._latin_index = {}
+        self._bengali_index = {}
+        self._english_index = {}
+        self._category_index = {}
+        for entry in self._entries:
+            cat = entry.get("category")
+            if cat:
+                cat_l = cat.strip().lower()
+                self._categories.add(cat_l)
+                self._category_index.setdefault(cat_l, []).append(entry)
+
+            latin = entry.get("kokborok_latin")
+            if latin:
+                l_low = latin.strip().lower()
+                self._latin_index.setdefault(l_low, []).append(entry)
+                l_tone = remove_tone_markers(l_low)
+                if l_tone != l_low:
+                    self._latin_index.setdefault(l_tone, []).append(entry)
+
+            bengali = entry.get("kokborok_bengali")
+            if bengali:
+                self._bengali_index.setdefault(bengali.strip(), []).append(entry)
+
+            eng = entry.get("english")
+            if eng:
+                self._english_index.setdefault(eng.strip().lower(), []).append(entry)
+
+            for syn in entry.get("english_synonyms", []):
+                if syn:
+                    self._english_index.setdefault(syn.strip().lower(), []).append(entry)
+
+        if self._data_path == _DEFAULT_DATA_PATH:
+            _DEFAULT_DATA_CACHE = {
+                "entries": self._entries,
+                "categories": self._categories,
+                "latin_index": self._latin_index,
+                "bengali_index": self._bengali_index,
+                "english_index": self._english_index,
+                "category_index": self._category_index,
+            }
+
         self._loaded = True
 
     @property
@@ -96,11 +182,7 @@ class KokborokDictionary:
             A list of dictionary entries matching the category.
         """
         cat_lower = category.strip().lower()
-        return [
-            entry
-            for entry in self._entries
-            if entry.get("category", "").lower() == cat_lower
-        ]
+        return list(self._category_index.get(cat_lower, []))
 
     def add_entry(self, entry: Dict[str, Any]) -> None:
         """Add a new verified dictionary entry in-memory.
@@ -119,8 +201,7 @@ class KokborokDictionary:
             )
 
         self._entries.append(entry)
-        if "category" in entry:
-            self._categories.add(entry["category"].lower())
+        self._index_entry(entry)
 
     def search(
         self,
@@ -164,6 +245,26 @@ class KokborokDictionary:
                 seen_keys.add(key)
                 results.append(entry)
 
+        # Fast O(1) indexed exact search
+        if exact:
+            candidates: List[Dict[str, Any]] = []
+            if target_mode in ("kokborok", "both"):
+                if script == "bengali":
+                    candidates.extend(self._bengali_index.get(cleaned_query, []))
+                else:
+                    candidates.extend(self._latin_index.get(q_lower, []))
+                    if q_tone_free != q_lower:
+                        candidates.extend(self._latin_index.get(q_tone_free, []))
+            if target_mode in ("english", "both"):
+                candidates.extend(self._english_index.get(q_lower, []))
+
+            for entry in candidates:
+                if len(results) >= limit:
+                    break
+                add_result(entry)
+            return results
+
+        # Partial matching scan with early exit
         for entry in self._entries:
             if len(results) >= limit:
                 break
@@ -178,33 +279,19 @@ class KokborokDictionary:
             # Check Kokborok side
             if target_mode in ("kokborok", "both"):
                 if script == "bengali":
-                    # Exact or partial match in Bengali script
-                    if exact:
-                        match = cleaned_query == kb_bengali
-                    else:
-                        match = cleaned_query in kb_bengali
+                    match = cleaned_query in kb_bengali
                 else:
-                    # Match in Latin script
-                    if exact:
-                        match = (
-                            q_lower == kb_latin
-                            or q_tone_free == remove_tone_markers(kb_latin)
-                        )
-                    else:
-                        match = (
-                            q_lower in kb_latin
-                            or q_tone_free in remove_tone_markers(kb_latin)
-                        )
+                    match = (
+                        q_lower in kb_latin
+                        or q_tone_free in remove_tone_markers(kb_latin)
+                    )
 
             # Check English side
             if not match and target_mode in ("english", "both"):
-                if exact:
-                    match = (q_lower == eng) or (q_lower in synonyms)
-                else:
-                    match = (
-                        (q_lower in eng)
-                        or any(q_lower in syn for syn in synonyms)
-                    )
+                match = (
+                    (q_lower in eng)
+                    or any(q_lower in syn for syn in synonyms)
+                )
 
             if match:
                 add_result(entry)
